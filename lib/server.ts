@@ -1,12 +1,21 @@
 import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 export class ServiceError extends Error {}
 export function configured() {
-  return !!(
-    process.env.SUPABASE_URL &&
-    (process.env.SUPABASE_SECRET_KEY ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY) &&
-    (process.env.FORM_SIGNING_SECRET?.length || 0) >= 32
-  );
+  const issues: string[] = [];
+  if (!process.env.SUPABASE_URL) issues.push("SUPABASE_URL is missing");
+  if (
+    !process.env.SUPABASE_SECRET_KEY &&
+    !process.env.SUPABASE_SERVICE_ROLE_KEY
+  )
+    issues.push("SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) is missing");
+  if (!process.env.FORM_SIGNING_SECRET)
+    issues.push("FORM_SIGNING_SECRET is missing");
+  else if (process.env.FORM_SIGNING_SECRET.length < 32)
+    issues.push("FORM_SIGNING_SECRET must contain at least 32 characters");
+  // Server logs identify configuration errors without exposing any values.
+  if (issues.length)
+    console.error(`[GripArc configuration] ${issues.join("; ")}`);
+  return issues.length === 0;
 }
 // Modern secret keys belong only in apikey; legacy JWT keys also use Bearer.
 export function supabaseConnection() {
