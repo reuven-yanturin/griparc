@@ -7,6 +7,7 @@ export default async function Home({
   searchParams: Promise<{ variant?: string }>;
 }) {
   const params = await searchParams;
+  console.log("Landing")
   return (
     <Landing
       variant={
