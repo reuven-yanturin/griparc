@@ -115,9 +115,9 @@ export function validateEvent(v: unknown) {
     properties.step = b.step;
   }
   return {
-    event_name: b.event,
+    event_name: String(b.event),
     session_id: b.session,
-    marketing_variant: b.marketing_variant,
+    marketing_variant: String(b.marketing_variant),
     properties,
   };
 }

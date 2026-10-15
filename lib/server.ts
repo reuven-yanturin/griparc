@@ -3,26 +3,30 @@ export class ServiceError extends Error {}
 export function configured() {
   return !!(
     process.env.SUPABASE_URL &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY &&
+    (process.env.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY) &&
     (process.env.FORM_SIGNING_SECRET?.length || 0) >= 32
   );
+}
+// Modern secret keys belong only in apikey; legacy JWT keys also use Bearer.
+export function supabaseConnection() {
+  const url = process.env.SUPABASE_URL?.replace(/\/+$/, "");
+  const key =
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new ServiceError("Storage is not configured.");
+  const headers: Record<string, string> = { apikey: key };
+  if (!key.startsWith("sb_secret_")) headers.Authorization = `Bearer ${key}`;
+  return { url, headers };
 }
 export async function database(
   path: string,
   body: unknown,
   extra: Record<string, string> = {},
 ) {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new ServiceError("Storage is not configured.");
+  const { url, headers } = supabaseConnection();
   const response = await fetch(`${url}/rest/v1/${path}`, {
     method: "POST",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      ...extra,
-    },
+    headers: { ...headers, "Content-Type": "application/json", ...extra },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(8000),
     cache: "no-store",

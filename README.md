@@ -15,13 +15,16 @@ npm run dev
 
 Open http://localhost:3000. The full assessment and results preview work without credentials. Registration deliberately returns an unavailable state until Supabase is configured; no lead is silently lost or fake-saved.
 
+For step-by-step Russian instructions, see [Подключение Supabase и аналитики](SETUP.ru.md).
+
 ## Supabase setup
 
 1. Create a Supabase project; choose a US region for the intended audience.
-2. Run `supabase/migrations/001_validation.sql` once using the SQL editor. It creates private lead/event tables, durable rate limits, and atomic registration RPCs. RLS is enabled; anon/authenticated have no access.
-3. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`. These variables are server-only. Never use a `NEXT_PUBLIC_` prefix for a secret.
+2. Run `supabase/migrations/001_validation.sql`, then `supabase/migrations/002_posthog_conversion_status.sql`, once each using the SQL editor. It creates private lead/event tables, durable rate limits, and atomic registration RPCs. RLS is enabled; anon/authenticated have no access.
+3. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (`sb_secret_...`, from Settings → API Keys) in `.env.local`. An existing legacy `service_role` JWT can use `SUPABASE_SERVICE_ROLE_KEY` instead. These variables are server-only. Never use a `NEXT_PUBLIC_` prefix for a secret.
 4. Generate a `FORM_SIGNING_SECRET` with `openssl rand -hex 32` and set it in `.env.local`.
-5. Restart the server. Complete a real signup and verify the lead and conversion event in the SQL editor. Repeat the same normalized email: it should succeed generically without adding a second lead or conversion.
+5. Run `npm run check:supabase` to check table access and RPC availability without reading personal data or creating fake registrations.
+6. Restart the server. Complete a real signup and verify the lead and conversion event in the SQL editor. Repeat the same normalized email: it should succeed generically without adding a second lead or conversion.
 
 The app calls Supabase’s REST API directly from route handlers, avoiding a browser database client. No secrets reach the browser. A service key bypasses RLS by design; keep it in the deployment’s secret environment settings.
 
@@ -29,7 +32,7 @@ The app calls Supabase’s REST API directly from route handlers, avoiding a bro
 
 1. Import this repository and set **Root Directory** to `web`.
 2. Choose the Next.js preset (build `npm run build`, install `npm ci`).
-3. Add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FORM_SIGNING_SECRET`, and `NEXT_PUBLIC_SITE_URL=https://your-real-domain.com` to the appropriate environment. The privacy contact defaults to `support@griparc.site`; optionally override it with `PRIVACY_CONTACT_EMAIL`.
+3. Add `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`), `FORM_SIGNING_SECRET`, and `NEXT_PUBLIC_SITE_URL=https://your-real-domain.com` to the appropriate environment. The privacy contact defaults to `support@griparc.site`; optionally override it with `PRIVACY_CONTACT_EMAIL`.
 4. Deploy. Set the canonical production domain for `NEXT_PUBLIC_SITE_URL`, then redeploy so metadata and sitemap use it. Use the preview URL as that variable in preview environments if needed.
 5. Run the live smoke test below before buying traffic.
 
@@ -52,7 +55,7 @@ The same headline, design, pricing, questions and signup flow are used for both 
 
 ## Measurement
 
-First-party `/api/events` writes to `funnel_events`; no third-party analytics SDK, cookies, fingerprinting or persistent user ID. Event data is allowlisted. Detailed assessment answers are saved only if the visitor explicitly signs up. Do Not Track / Global Privacy Control opt out of measurement, including the server conversion event.
+First-party `/api/events` writes to `funnel_events`. Optional server-side PostHog mirroring provides visual charts and funnels; there is no browser analytics SDK, auto-capture, replay, cookies, fingerprinting or persistent user ID. Event data is allowlisted. Detailed assessment answers are saved only if the visitor explicitly signs up. Do Not Track / Global Privacy Control opt out of measurement, including the server conversion event.
 
 Events: `landing_view`, `hero_cta_click`, `assessment_started`, `assessment_step_completed` (step number only), `assessment_completed`, `results_viewed`, `pricing_viewed` (at least 25% of pricing cards visible, or focus on the optional in-form pricing selector), `plan_selected`, `early_access_started`, `early_access_submitted`.
 
@@ -61,6 +64,19 @@ The last event is recorded **server-side in the same transaction as a new lead**
 Run the reporting queries in `supabase/reporting.sql`. Primary metric: **new assessment-qualified registrations / landing sessions**, split by variant. Also compare start/completion rates, goal mix and optional plan preferences. Visitors who opt out of analytics can still register, so lead totals and measured funnel totals may differ. Stated plan interest is not willingness-to-pay evidence and no revenue is collected.
 
 Use campaign IDs in UTMs; never put email, names, sensitive data or detailed fitness answers into campaign parameters. Ad attribution from Google/TikTok click identifiers is intentionally not collected.
+
+## PostHog analytics
+
+1. Create a PostHog account/project. Choose US Cloud if using the default host; EU Cloud is also supported.
+2. Add `POSTHOG_PROJECT_API_KEY` (the **Project API key**, not a Personal API key) to `.env.local` and Vercel environment settings. Set `POSTHOG_HOST` to `https://us.i.posthog.com` or `https://eu.i.posthog.com` to match the project.
+3. Apply migration `002_posthog_conversion_status.sql` **before deploying this code**, even if `001_validation.sql` was applied earlier. It adds `register_early_access_v2` without changing existing rows or removing the old RPC.
+4. Restart/redeploy. Visit a campaign URL and complete a consented test signup. Verify events in PostHog as well as Supabase. Repeating the same email must not add another submitted event.
+5. Build a funnel: `landing_view` → `assessment_started` → `assessment_completed` → `results_viewed` → `pricing_viewed` → `early_access_submitted`. Break down by event property `marketing_variant`. Also save a shorter landing → signup funnel because direct signup is supported.
+6. Add trends for unique `landing_view` sessions, `early_access_submitted`, `plan_selected` by `selected_plan`, and submitted events by `selected_goal` / `utm_source`. A distinct ID is a tab session, not an identified person.
+
+The server uses PostHog's [capture API](https://posthog.com/docs/api/capture) after successful Supabase writes, with an anonymous random session ID, person profiles disabled and GeoIP disabled. A second allowlist strips unsupported fields before export. Visitor headers and IPs are not forwarded. Privacy opt-outs bypass both stores' analytics.
+
+The Supabase conversion commits atomically with the lead. PostHog mirroring is **best effort**, has a 1.5-second timeout, and logs only generic failure/status messages. A PostHog outage never changes a successful signup to an error. Mirroring is awaited to avoid losing an unawaited promise on Vercel; it can add up to 1.5 seconds to a signup response. There is no retry queue or historical backfill: Supabase remains the source of truth, and missing PostHog copies after a network failure will not be retried by duplicate submissions. Configure project retention separately; Supabase's cleanup does not remove PostHog data. No events are sent to PostHog when the key is blank.
 
 ## Spam protection and privacy operations
 

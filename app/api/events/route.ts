@@ -1,3 +1,4 @@
+import { capturePosthog } from "@/lib/posthog";
 import {
   configured,
   rateLimit,
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
     if (!(await rateLimit(request, "event")))
       return new Response(null, { status: 429 });
     await database("funnel_events", event, { Prefer: "return=minimal" });
+    await capturePosthog(event);
     return new Response(null, { status: 204 });
   } catch {
     return new Response(null, { status: 503 });

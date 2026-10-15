@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "check:supabase": "node --env-file=.env.local --import tsx scripts/check-supabase.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

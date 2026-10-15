@@ -7,7 +7,7 @@ export default function Privacy() {
     <>
       <Header simple />
       <main id="main" className="container legal">
-        <span className="eyebrow">LAST UPDATED OCTOBER 14, 2026</span>
+        <span className="eyebrow">LAST UPDATED OCTOBER 15, 2026</span>
         <h1>
           Your journey.
           <br />
@@ -49,14 +49,23 @@ export default function Privacy() {
           in our database. Hosting providers may maintain their own security
           logs.
         </p>
+        <p>
+          When enabled, PostHog receives a copy of these limited funnel events
+          from our server for charts and conversion analysis. We do not send
+          email addresses, detailed assessment answers, visitor IP addresses,
+          names, or session recordings to PostHog. No browser analytics SDK is
+          installed and no identified person profiles are created.
+        </p>
         <h2>Providers and retention</h2>
         <p>
           The site is designed for Vercel hosting and uses Supabase for data
           storage. Only server-side code can write to the database. Anonymous
           event data is retained for up to 90 days through the configured
-          cleanup job. Early-access details are retained during the validation
-          and launch period, or until you request removal. If the project does
-          not proceed, the list will be deleted.
+          cleanup job. PostHog event retention is managed separately in the
+          analytics project and may differ; Supabase cleanup does not delete
+          PostHog copies. Early-access details are retained during the
+          validation and launch period, or until you request removal. If the
+          project does not proceed, the list will be deleted.
         </p>
         <h2>Your choices</h2>
         <p>

@@ -1,3 +1,4 @@
+import { capturePosthog } from "@/lib/posthog";
 import {
   configured,
   makeChallenge,
@@ -59,14 +60,29 @@ export async function POST(request: Request) {
         { error: "Too many attempts. Please try again in an hour." },
         429,
       );
-    await database("rpc/register_early_access", {
+    const session = validSession(body.session) ? body.session : null;
+    const analytics =
+      body.analytics === true &&
+      request.headers.get("dnt") !== "1" &&
+      request.headers.get("sec-gpc") !== "1";
+    const created = await database("rpc/register_early_access_v2", {
       p_lead: lead,
-      p_session: validSession(body.session) ? body.session : null,
-      p_analytics:
-        body.analytics === true &&
-        request.headers.get("dnt") !== "1" &&
-        request.headers.get("sec-gpc") !== "1",
+      p_session: session,
+      p_analytics: analytics,
     });
+    if (created === true && analytics && session) {
+      await capturePosthog({
+        event_name: "early_access_submitted",
+        session_id: session,
+        marketing_variant: String(lead.marketing_variant),
+        properties: {
+          ...lead.attribution,
+          selected_goal: lead.selected_goal,
+          experience_level: lead.experience_level,
+          selected_plan: lead.selected_plan,
+        },
+      });
+    }
     return json({ ok: true });
   } catch {
     return json(
